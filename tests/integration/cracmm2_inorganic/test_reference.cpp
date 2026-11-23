@@ -1,9 +1,10 @@
-#include "mkpp_host/cracmm2_inorganic.hpp"
+#include "mkpp_host/cracmm2_inorganic_fine_modes.hpp"
 
 #include <array>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <span>
 #include <string_view>
 
 extern "C" void mkpp_reference_lite(const double* totals, const double* organic, double rh,
@@ -85,24 +86,84 @@ int run(std::string_view name, const Fixture& fixture) {
   }
 
   constexpr double molar_tolerance = 5.0e-12;  // mol/m3
-  constexpr double water_tolerance = 1.0e-13;   // kg/m3
-  const std::array<double, 3> host_gases{host.nh3, host.hno3, host.hcl};
-  const std::array<double, 3> host_particles{host.anh4, host.ano3, host.acl};
+  constexpr double water_tolerance = 1.0e-13;  // kg/m3
   constexpr std::array<std::string_view, 3> gas_names{"NH3", "HNO3", "HCl"};
   constexpr std::array<std::string_view, 3> particle_names{"ANH4", "ANO3", "ACL"};
   std::cout << std::left << std::setw(16) << "Field" << std::setw(10) << "Unit" << std::right
-            << std::setw(16) << "MKPP" << std::setw(16) << "Legacy Lite" << std::setw(16) << "Abs. diff."
+            << std::setw(16) << "MKPP" << std::setw(16) << "Reference" << std::setw(16) << "Abs. diff."
             << std::setw(16) << "Tolerance" << "  Result\n";
-  bool ok = true;
-  for (std::size_t i = 0; i < gases.size(); ++i) {
-    ok &= compare(gas_names[i], "mol m-3", host_gases[i] / molecules_cm3_per_mol_m3, gases[i], molar_tolerance);
-    ok &= compare(particle_names[i], "mol m-3", host_particles[i] / molecules_cm3_per_mol_m3,
-                  particles[i], molar_tolerance);
+
+  // Same independent Fortran reference for both host representations.
+  auto check_totals = [&](const std::array<double, 3>& gas, const std::array<double, 3>& aerosol,
+                          double aso4, const Cracmm2ThermoDiagnostics& diagnostics) {
+    bool passed = true;
+    for (std::size_t i = 0; i < gases.size(); ++i) {
+      passed &= compare(gas_names[i], "mol m-3", gas[i] / molecules_cm3_per_mol_m3, gases[i], molar_tolerance);
+      passed &= compare(particle_names[i], "mol m-3", aerosol[i] / molecules_cm3_per_mol_m3,
+                        particles[i], molar_tolerance);
+    }
+    passed &= compare("ASO4", "mol m-3", aso4 / molecules_cm3_per_mol_m3, sulfate, molar_tolerance);
+    passed &= compare("AH3OP", "mol m-3", diagnostics.hydronium_cm3 / molecules_cm3_per_mol_m3, hydronium, 1.0e-16);
+    passed &= compare("total water", "kg m-3", diagnostics.total_kg_m3, water[0], water_tolerance);
+    passed &= compare("organic water", "kg m-3", diagnostics.organic_kg_m3, water[1], water_tolerance);
+    return passed;
+  };
+  std::cout << "Bulk host vs. original Lite Fortran\n";
+  bool ok = check_totals({host.nh3, host.hno3, host.hcl}, {host.anh4, host.ano3, host.acl}, host.aso4, host_water);
+
+  // Distinct initial phase fractions exercise both signs of net transfer.
+  // The third mode is excluded from the specified gas + fine component totals.
+  constexpr std::array<double, 3> condensed_fraction{0.65, 0.10, 0.50};
+  constexpr std::array<double, 3> first_mode_fraction{0.20, 0.80, 0.55};
+  constexpr std::array<double, 2> sinks{3.0, 1.0};
+  std::array<Cracmm2InorganicMode, 3> modes{};
+  auto& first = modes[0];
+  auto& second = modes[1];
+  modes[2].ano3 = 4.5e12;
+  modes[2].ana = 4.5e12;
+  const auto coarse = modes[2];
+
+  auto split = [&](double total_mol_m3, double first_fraction, double& mode1, double& mode2) {
+    const double total_cm3 = total_mol_m3 * molecules_cm3_per_mol_m3;
+    mode1 = total_cm3 * first_fraction;
+    mode2 = total_cm3 - mode1;
+  };
+  split(totals[0], 0.35, first.ana, second.ana);
+  split(totals[1], 0.41, first.aso4, second.aso4);
+  split(totals[5], 0.25, first.aca, second.aca);
+  split(totals[6], 0.75, first.ak, second.ak);
+  split(totals[7], 0.65, first.amg, second.amg);
+  split(totals[2] * condensed_fraction[0], first_mode_fraction[0], first.anh4, second.anh4);
+  split(totals[3] * condensed_fraction[1], first_mode_fraction[1], first.ano3, second.ano3);
+  split(totals[4] * condensed_fraction[2], first_mode_fraction[2], first.acl, second.acl);
+  Cracmm2InorganicGas gas{totals[2] * (1.0 - condensed_fraction[0]) * molecules_cm3_per_mol_m3,
+                          totals[3] * (1.0 - condensed_fraction[1]) * molecules_cm3_per_mol_m3,
+                          totals[4] * (1.0 - condensed_fraction[2]) * molecules_cm3_per_mol_m3};
+  Cracmm2ThermoDiagnostics fine{};
+  if (partition_cracmm2_fine_modes(gas, std::span(modes).first(2), sinks, environment, fine) !=
+      Cracmm2ThermoStatus::success) {
+    std::cerr << "Fine-mode host solve failed\n";
+    return 1;
   }
-  ok &= compare("ASO4", "mol m-3", host.aso4 / molecules_cm3_per_mol_m3, sulfate, molar_tolerance);
-  ok &= compare("AH3OP", "mol m-3", host_water.hydronium_cm3 / molecules_cm3_per_mol_m3, hydronium, 1.0e-16);
-  ok &= compare("total water", "kg m-3", host_water.total_kg_m3, water[0], water_tolerance);
-  ok &= compare("organic water", "kg m-3", host_water.organic_kg_m3, water[1], water_tolerance);
+  std::cout << "Gas + fine modes I/J vs. original Lite Fortran\n";
+  ok &= check_totals({gas.nh3, gas.hno3, gas.hcl}, {first.anh4 + second.anh4, first.ano3 + second.ano3,
+                     first.acl + second.acl}, first.aso4 + second.aso4, fine);
+  if (coarse.ano3 != modes[2].ano3 || coarse.ana != modes[2].ana) {
+    std::cerr << "Excluded coarse sodium nitrate reservoir changed\n";
+    ok = false;
+  }
+
+  // Fortran supplies the final bulk particle amounts. Apply the independently
+  // specified transfer shares to obtain an expected concentration in mode I.
+  constexpr std::array<std::string_view, 3> first_names{"mode I ANH4", "mode I ANO3", "mode I ACL"};
+  const std::array<double, 3> first_out{first.anh4, first.ano3, first.acl};
+  for (std::size_t i = 0; i < particles.size(); ++i) {
+    const double initial = totals[i + 2] * condensed_fraction[i];
+    const double expected = particles[i] < initial
+        ? particles[i] * first_mode_fraction[i]
+        : initial * first_mode_fraction[i] + 0.75 * (particles[i] - initial);
+    ok &= compare(first_names[i], "mol m-3", first_out[i] / molecules_cm3_per_mol_m3, expected, molar_tolerance);
+  }
   return ok ? 0 : 1;
 }
 }  // namespace

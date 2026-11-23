@@ -67,9 +67,12 @@ current imported snapshot, not the full set of CMAQ aerosol processes.
    inline C++ only when a mechanism declares EQUILIBRIUM reactions. CRACMM2
    declares none; its generated kernel neither calls the submodule nor embeds
    its thermodynamics. An [opt-in host adapter](../../src/mkpp_host/include/mkpp_host/cracmm2_inorganic_state.hpp)
-   now calls the pinned solver and writes bulk gas, particle and water results
-   back to the host cell when invoked. Host scheduling and comparison with
-   a matched CMAQ ISORROPIA II configuration remain open.
+   calls the pinned solver for a bulk cell or for selected fine modes. In the
+   generated host, the two-mode entry point updates the shared gas, fine
+   particulate amounts and their contributions to the aggregate tracers.
+   CI exercises four legacy Lite reference cases and two matched,
+   inorganic-only CMAQ ISORROPIA II box cases. CAT-Chem process scheduling
+   and comparison of size-resolved water and coarse-mode transfer remain open.
 
 5. **Condensation, evaporation, and nucleation.** CRACMM's condensable
    precursors and particle species do not implement CMAQ's inorganic
@@ -132,9 +135,10 @@ host process, modal and heterogeneous coupling, and scientific validation:
    contribution. The host adapter writes aqueous H+ as the AH3OP tracer. Any
    pH diagnostic additionally requires a stated activity convention, liquid-water
    basis and dry-cell treatment; reconcile `AH2O` and organic-water `AORGH2O` so water is not
-   counted twice. CRACMM2's `ASO4`, `ANO3`, and `ANH4` are aggregate catalog
-   names, not a complete CMAQ modal allocation: CAT-Chem must own any size-bin
-   mapping and conserve totals when writing them back. Check solver errors,
+   counted twice. The [fine-mode interface](../how-to/compile-cracmm2.md#partition-gas-against-selected-fine-modes)
+   uses host-supplied condensational sinks for uptake and each ion's current
+   modal fractions for evaporation. The aerosol driver owns mode selection,
+   condensation sink calculation, and mode-specific water and hydronium. Check solver errors,
    finite/nonnegative outputs, charge balance, and per-cell mass closure.
 
 4. **Schedule rate feedback without duplicating fluxes.** After the gas-phase

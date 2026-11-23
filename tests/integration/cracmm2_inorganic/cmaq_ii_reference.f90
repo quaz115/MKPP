@@ -1,5 +1,5 @@
-! Test-only wrapper for ISORROPIA II in CMAQ 5.5.0.4, aero6/isocom.f.
-subroutine mkpp_reference_cmaq_ii(totals, rh, temperature, gas, particle, sulfate, water, hydronium, status) bind(C)
+! Common test driver for the separately linked EPFL II 2.3 and CMAQ 5.5.0.4 II sources.
+subroutine mkpp_reference_isorropia_ii(totals, rh, temperature, gas, particle, sulfate, water, hydronium, status) bind(C)
   use iso_c_binding, only: c_double, c_int
   implicit none
   real(c_double), intent(in) :: totals(8)
@@ -26,4 +26,4 @@ subroutine mkpp_reference_cmaq_ii(totals, rh, temperature, gas, particle, sulfat
   sulfate = liquid(5) + liquid(6) + sum(solid(5:8)) + 2*solid(9) + solid(10) + solid(13) + solid(14) + solid(17)
   water = 0.018_c_double * liquid(8) ! mol H2O/m3 to kg/m3
   hydronium = liquid(1)              ! mol H+/m3 air
-end subroutine mkpp_reference_cmaq_ii
+end subroutine mkpp_reference_isorropia_ii

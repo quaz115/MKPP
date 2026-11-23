@@ -63,9 +63,9 @@ The reference option requires a Fortran compiler and builds the original Lite
 routines from the pinned submodule. Four forward box cases compare the three gas
 amounts, their particulate families, sulfate, particulate hydronium and organic and total water. The condensed
 reference sums the corresponding aqueous and solid species independently.
-The cases cover a wet ammonium–nitrate–sulfate mixture, a wet mixture with
+The cases cover a wet ammonium-nitrate-sulfate mixture, a wet mixture with
 sodium, chloride and crustal ions, colder inorganic-only aerosol and sulfate-rich aerosol. The comparison uses 1% of the reference
-plus 5 pmol m⁻³ for each chemical family or 0.1 ng m⁻³ for water. These
+plus 5 pmol m?3 for each chemical family or 0.1 ng m?3 for water. These
 tolerances apply to these fixtures only.
 
 To exercise both kinetics and partitioning through the generated host API, use
@@ -79,14 +79,27 @@ ctest --test-dir build-lite -L cracmm2_inorganic --output-on-failure
 ctest --test-dir build-lite -R '^E2ESolver_cracmm2$' --output-on-failure
 ```
 
-For a cross-model comparison, supply `-DMKPP_CMAQ_ISORROPIA_II_DIR=<cmaq>/CCTM/src/aero/aero6`
-at configure time, build `cracmm2_inorganic_checks`, and run
-`ctest --test-dir build-lite -R '^cracmm2_cmaq_ii_' --verbose`. CI uses the
-[CMAQ 5.5.0.4 reference sources](https://github.com/USEPA/CMAQ/tree/1b70e0a395fc42cc34a4355807d39df1d3dbae84/CCTM/src/aero/aero6).
-Compare forward metastable inorganic-only cases at the same temperature, RH
-and component totals. Cross-model differences quantify sensitivity to the
-thermodynamics implementation. The separate legacy Lite tests supply the
-same-model numerical acceptance criteria.
+The cross-model tests compare MKPP Lite independently with the standalone EPFL
+ISORROPIA II 2.3 and with the version of II used by CMAQ 5.5.0.4. Check out
+the [EPFL source release](https://github.com/EPFL-LAPI/ISORROPIA-II/tree/17102b249d9279d4565da3c652ea6ef57c3a3b34/iso_2_3Src)
+and the [CMAQ sources](https://github.com/USEPA/CMAQ/tree/1b70e0a395fc42cc34a4355807d39df1d3dbae84/CCTM/src/aero/aero6)
+at those revisions. Supply one or both source directories in the configured build:
+
+```sh
+cmake -S . -B build-lite \
+  -DMKPP_EPFL_ISORROPIA_II_DIR="<epfl>/iso_2_3Src" \
+  -DMKPP_CMAQ_ISORROPIA_II_DIR="<cmaq>/CCTM/src/aero/aero6"
+cmake --build build-lite --target cracmm2_inorganic_checks --parallel 2
+ctest --test-dir build-lite -R '^cracmm2_(cmaq|epfl)_ii_' --verbose --no-tests=error
+```
+
+The matched fixtures use forward metastable equilibrium at 70% RH, no organics,
+the same sulfate, total ammonia and total nitrate, and temperatures of 278.15 K
+and 298.15 K. Each model must conserve the three input families within
+5 pmol m?3 plus 0.1% of the family total. For these fixtures, the MKPP and II
+particulate fractions of total ammonia and total nitrate must agree within
+0.005 (0.5 percentage point). Verbose output reports concentrations, water,
+hydronium and signed differences.
 
 CMAQ applies forward equilibrium to fine modes. In hybrid mode it also uses
 a reverse equilibrium calculation at the coarse-particle surface to drive
@@ -111,11 +124,11 @@ if (status != mkpp::host::Cracmm2ThermoStatus::success) {
 }
 ```
 
-Use molecules or ionic formula units cm⁻³ for the concentration buffer,
+Use molecules or ionic formula units cm?3 for the concentration buffer,
 temperature in K and RH as a fraction. The adapter converts the eight
-component totals to mol m⁻³ of air before the direct solver call. Optional
-organic forcing comprises dry organic mass in kg m⁻³, hygroscopicity and
-material density in kg m⁻³. It writes back NH3/ANH4, HNO3/ANO3 and HCL/ACL.
+component totals to mol m?3 of air before the direct solver call. Optional
+organic forcing comprises dry organic mass in kg m?3, hygroscopicity and
+material density in kg m?3. It writes back NH3/ANH4, HNO3/ANO3 and HCL/ACL.
 AH2O receives inorganic water and AORGH2O the organic share. AH3OP receives
 one hydronium ion per reported aqueous H+ ion. The direct solver reports the
 H+ amount per air volume. A pH diagnostic also requires an explicit water basis and activity convention. Select one
@@ -138,7 +151,7 @@ CMAQ configuration with ISORROPIA II answer different scientific questions.
 For a size-resolved host, call `partition_fine_modes_cell` in place of the
 bulk call for the same pool and timestep. The generated-host overload takes
 the cell's Aitken and accumulation reservoirs. Supply their ion amounts in
-formula units cm⁻³, the host's condensation sink for each mode, and organic
+formula units cm?3, the host's condensation sink for each mode, and organic
 forcing for **only these modes**. Keep the gas concentrations in the generated
 state. Each aggregate inorganic tracer in the generated state must include
 the selected fine-mode amounts.
@@ -153,11 +166,12 @@ if (status != mkpp::host::Cracmm2ThermoStatus::success) {
 ```
 
 `fine_diagnostics` is per-cell state. Initialize it from the selected modes'
-previous total water, organic-associated water (both kg m⁻³ of air), and
-hydronium (ions cm⁻³ of air). Use zeros for an initially dry fine aerosol.
-Pass its updated value on the next step and restore it with the modal
-reservoirs on restart. This lets the binding replace only the fine contribution
-to the all-mode AH2O, AORGH2O and AH3OP tracers. A host that owns its own
+previous total water, organic-associated water (both kg m?3 of air), and
+hydronium (ions cm?3 of air). Use zeros for an initially dry fine aerosol.
+At each call, these amounts must describe the fine contribution in the current
+all-mode AH2O, AORGH2O and AH3OP tracers. If transport, mixing or deposition
+has changed the cell since the previous call, update that contribution before
+calling the binding. Restore it alongside the modal reservoirs on restart. A host that owns its own
 aggregate fields can call `partition_cracmm2_fine_modes` directly with a span
 of selected modes and consume the returned fine-total diagnostics.
 

@@ -6,10 +6,11 @@
 #include <iostream>
 #include <string_view>
 
-extern "C" void mkpp_reference_cmaq_ii(const double* totals, double rh, double temperature, double* gases,
+extern "C" void mkpp_reference_isorropia_ii(const double* totals, double rh, double temperature, double* gases,
                                        double* particles, double* sulfate, double* water, double* hydronium, int* status);
 
 namespace {
+constexpr std::string_view reference_name = MKPP_II_REFERENCE_NAME;
 constexpr double to_host = 6.02214076e17; // mol/m3 air to molecules/cm3 air
 constexpr double rh = 0.70;
 // Same inorganic totals and RH in both cases. Only temperature changes.
@@ -44,9 +45,20 @@ void report(std::string_view name, std::string_view unit, double lite, double ii
             << std::setw(17) << lite << std::setw(17) << ii << std::setw(17) << (lite - ii) << '\n';
 }
 
+bool check_particle_fraction(std::string_view species, double lite, double ii, double total) {
+  const double lite_fraction = lite / total;
+  const double ii_fraction = ii / total;
+  report(species, "1", lite_fraction, ii_fraction);
+  // Regression limit for the two zero-organic NHx/sulfate/nitrate fixtures.
+  constexpr double tolerance = 0.005; // absolute fraction; 0.5 percentage point
+  if (std::abs(lite_fraction - ii_fraction) <= tolerance) return true;
+  std::cerr << species << " exceeds the absolute fraction tolerance " << tolerance << '\n';
+  return false;
+}
+
 int run(double temperature) {
   using namespace mkpp::host;
-  std::cout << "CMAQ 5.5.0.4 ISORROPIA II and MKPP Lite, forward/metastable, zero organics, T="
+  std::cout << reference_name << " and MKPP Lite, forward/metastable, zero organics, T="
             << temperature << " K, RH=" << rh << '\n';
   Cracmm2InorganicState state{};
   state.aso4 = totals[1] * to_host;
@@ -64,15 +76,15 @@ int run(double temperature) {
   std::array<double, 2> particle{};
   double sulfate{}, water{}, hydronium{};
   int status = -1;
-  mkpp_reference_cmaq_ii(totals.data(), rh, temperature, gas.data(), particle.data(), &sulfate, &water, &hydronium, &status);
+  mkpp_reference_isorropia_ii(totals.data(), rh, temperature, gas.data(), particle.data(), &sulfate, &water, &hydronium, &status);
   if (status != 0) {
-    std::cerr << "CMAQ ISORROPIA II reported solver diagnostics, status=" << status << '\n';
+    std::cerr << reference_name << " reported solver diagnostics, status=" << status << '\n';
     return 1;
   }
   const Result ii{gas[0], gas[1], particle[0], particle[1], sulfate, water, hydronium};
   std::cout << std::scientific << std::setprecision(7) << std::left << std::setw(22) << "Field"
             << std::setw(12) << "Unit" << std::right << std::setw(17) << "MKPP Lite"
-            << std::setw(17) << "CMAQ II" << std::setw(17) << "Lite minus II" << '\n';
+            << std::setw(17) << reference_name << std::setw(17) << "Lite minus II" << '\n';
   report("NH3", "mol m-3", lite.nh3, ii.nh3);
   report("HNO3", "mol m-3", lite.hno3, ii.hno3);
   report("ANH4", "mol m-3", lite.nh4, ii.nh4);
@@ -80,11 +92,11 @@ int run(double temperature) {
   report("ASO4", "mol m-3", lite.sulfate, ii.sulfate);
   report("AH3OP", "mol m-3", lite.hydronium, ii.hydronium);
   report("aerosol water", "kg m-3", lite.water, ii.water);
-  report("NHx particle fraction", "1", lite.nh4/totals[2], ii.nh4/totals[2]);
-  report("NO3 particle fraction", "1", lite.no3/totals[3], ii.no3/totals[3]);
+  const bool nhx_ok = check_particle_fraction("NHx particle fraction", lite.nh4, ii.nh4, totals[2]);
+  const bool nitrate_ok = check_particle_fraction("NO3 particle fraction", lite.no3, ii.no3, totals[3]);
   const bool lite_ok = physical(lite, "MKPP Lite");
-  const bool ii_ok = physical(ii, "CMAQ II");
-  return lite_ok && ii_ok ? 0 : 1;
+  const bool ii_ok = physical(ii, reference_name);
+  return lite_ok && ii_ok && nhx_ok && nitrate_ok ? 0 : 1;
 }
 }  // namespace
 

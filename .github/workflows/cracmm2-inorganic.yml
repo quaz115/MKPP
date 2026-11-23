@@ -53,6 +53,14 @@ jobs:
           path: cmaq-reference
           sparse-checkout: CCTM/src/aero/aero6
           persist-credentials: false
+      - name: Check out the standalone ISORROPIA II 2.3 reference
+        uses: actions/checkout@v4
+        with:
+          repository: EPFL-LAPI/ISORROPIA-II
+          ref: 17102b249d9279d4565da3c652ea6ef57c3a3b34
+          path: epfl-ii-reference
+          sparse-checkout: iso_2_3Src
+          persist-credentials: false
       - name: Check the CRACMM2 importer and forcing catalog
         env:
           PYTHONPATH: .:src
@@ -65,14 +73,15 @@ jobs:
         run: >-
           python3 -m mkpp.cli compile mechanisms/openatmos/cracmm2/mechanism.json
           --test-env example_env.yaml --out build-host-api --host-api --no-cache
-      - name: Configure the host adapter and independent Fortran reference
+      - name: Configure the host adapter and independent Fortran references
         run: >-
           cmake -S . -B build-lite -G Ninja -DCMAKE_BUILD_TYPE=Release
           -DKokkos_ROOT=/opt/kokkos -DBUILD_TESTING=ON
           -DMKPP_ENABLE_CRACMM2_ISORROPIA_LITE=ON -DMKPP_TEST_LITE_FORTRAN=ON
           -DMKPP_CRACMM2_HOST_API_DIR="$PWD/build-host-api"
           -DMKPP_CMAQ_ISORROPIA_II_DIR="$PWD/cmaq-reference/CCTM/src/aero/aero6"
+          -DMKPP_EPFL_ISORROPIA_II_DIR="$PWD/epfl-ii-reference/iso_2_3Src"
       - name: Build the thermodynamics checks
         run: cmake --build build-lite --target cracmm2_inorganic_checks e2e_cracmm2_runner --parallel 2
       - name: Run thermodynamics checks
-        run: ctest --test-dir build-lite -R 'CRACMM2Inorganic_|cracmm2_generated_host_thermodynamics|cracmm2_cmaq_ii_|E2ESolver_cracmm2' --verbose --no-tests=error
+        run: ctest --test-dir build-lite -R 'CRACMM2Inorganic_|cracmm2_generated_host_thermodynamics|cracmm2_(cmaq|epfl)_ii_|E2ESolver_cracmm2' --verbose --no-tests=error

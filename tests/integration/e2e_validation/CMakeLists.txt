@@ -44,10 +44,14 @@ foreach(MECH ${MECHS})
 
   if(MECH STREQUAL "cracmm2")
     set(cracmm2_catalog "${CMAKE_SOURCE_DIR}/mechanisms/openatmos/cracmm2/mechanism.json")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${cracmm2_catalog}")
+    set_property(
+      DIRECTORY
+      APPEND
+      PROPERTY CMAKE_CONFIGURE_DEPENDS "${cracmm2_catalog}")
     file(READ "${cracmm2_catalog}" cracmm2_json)
     string(JSON cracmm2_reaction_count LENGTH "${cracmm2_json}" reactions)
-    target_compile_definitions(e2e_cracmm2_runner PRIVATE CRACMM2_REACTION_COUNT=${cracmm2_reaction_count})
+    target_compile_definitions(e2e_cracmm2_runner
+                               PRIVATE CRACMM2_REACTION_COUNT=${cracmm2_reaction_count})
     set_tests_properties(E2ESolver_cracmm2 PROPERTIES LABELS "cracmm2;gas-kinetics")
     continue() # This isolated reaction case checks its own reference tendencies.
   endif()

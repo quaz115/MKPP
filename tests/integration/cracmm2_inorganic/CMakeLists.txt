@@ -9,18 +9,20 @@ if(MKPP_TEST_LITE_FORTRAN)
   enable_language(Fortran)
   set(reference_dir "${CMAKE_CURRENT_SOURCE_DIR}/../../../src/isorropialite/isolite1_0_src")
   add_executable(
-    test_cracmm2_lite_reference
-    test_reference.cpp lite_reference.f90
-    "${reference_dir}/isocom.f" "${reference_dir}/isofwd.f" "${reference_dir}/isorev.f")
+    test_cracmm2_lite_reference test_reference.cpp lite_reference.f90 "${reference_dir}/isocom.f"
+                                "${reference_dir}/isofwd.f" "${reference_dir}/isorev.f")
   target_include_directories(test_cracmm2_lite_reference PRIVATE "${reference_dir}")
   if(CMAKE_Fortran_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(test_cracmm2_lite_reference PRIVATE $<$<COMPILE_LANGUAGE:Fortran>:-std=legacy>)
+    target_compile_options(test_cracmm2_lite_reference
+                           PRIVATE $<$<COMPILE_LANGUAGE:Fortran>:-std=legacy>)
   endif()
   target_link_libraries(test_cracmm2_lite_reference PRIVATE MKPP::cracmm2_inorganic)
   add_dependencies(cracmm2_inorganic_checks test_cracmm2_lite_reference)
   foreach(case_name ammonium-nitrate mixed-ions cold-inorganic sulfate-rich)
-    add_test(NAME CRACMM2Inorganic_reference_${case_name} COMMAND test_cracmm2_lite_reference ${case_name})
-    set_tests_properties(CRACMM2Inorganic_reference_${case_name} PROPERTIES LABELS cracmm2_inorganic)
+    add_test(NAME CRACMM2Inorganic_reference_${case_name} COMMAND test_cracmm2_lite_reference
+                                                                  ${case_name})
+    set_tests_properties(CRACMM2Inorganic_reference_${case_name} PROPERTIES LABELS
+                                                                            cracmm2_inorganic)
   endforeach()
 endif()
 

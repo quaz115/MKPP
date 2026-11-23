@@ -9,7 +9,12 @@ on:
       - 'tests/integration/cracmm2_inorganic/**'
       - 'tests/integration/e2e_validation/test_e2e_mechanisms.cpp'
       - 'tests/integration/e2e_validation/CMakeLists.txt'
-      - 'src/mkpp/templates/host_api/**'
+      - 'src/mkpp/**'
+      - 'mkpp-generated/cracmm2.hpp'
+      - 'mkpp-generated/cracmm2/**'
+      - 'scripts/import_cracmm2.py'
+      - 'tests/python/test_import_cracmm2.py'
+      - 'tests/integration/solver_benchmark/test_extended_mechanisms.py'
       - 'mechanisms/openatmos/cracmm2/mechanism.json'
       - '.github/workflows/cracmm2-inorganic.yml'
   pull_request:
@@ -20,7 +25,12 @@ on:
       - 'tests/integration/cracmm2_inorganic/**'
       - 'tests/integration/e2e_validation/test_e2e_mechanisms.cpp'
       - 'tests/integration/e2e_validation/CMakeLists.txt'
-      - 'src/mkpp/templates/host_api/**'
+      - 'src/mkpp/**'
+      - 'mkpp-generated/cracmm2.hpp'
+      - 'mkpp-generated/cracmm2/**'
+      - 'scripts/import_cracmm2.py'
+      - 'tests/python/test_import_cracmm2.py'
+      - 'tests/integration/solver_benchmark/test_extended_mechanisms.py'
       - 'mechanisms/openatmos/cracmm2/mechanism.json'
       - '.github/workflows/cracmm2-inorganic.yml'
 
@@ -43,6 +53,12 @@ jobs:
           path: cmaq-reference
           sparse-checkout: CCTM/src/aero/aero6
           persist-credentials: false
+      - name: Check the CRACMM2 importer and forcing catalog
+        env:
+          PYTHONPATH: .:src
+        run: >-
+          python3 -m pytest -q tests/python/test_import_cracmm2.py
+          tests/integration/solver_benchmark/test_extended_mechanisms.py::test_cracmm2_is_pinned_to_epa_source_and_preserves_multiphase_catalog
       - name: Emit the CRACMM2 host API used by the coupled test
         env:
           PYTHONPATH: src

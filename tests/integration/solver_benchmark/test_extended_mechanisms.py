@@ -54,5 +54,9 @@ def test_cracmm2_is_pinned_to_epa_source_and_preserves_multiphase_catalog() -> N
         "PHOTOLYSIS",
         "UNKNOWN",
     }
-    assert len(document["metadata"]["photolysis_host_forcing_expressions"]) == 2
+    photolysis_names = {reaction["name"] for reaction in document["reactions"] if reaction["type"] == "PHOTOLYSIS"}
+    forcing = document["metadata"]["photolysis_host_forcing_expressions"]
+    assert set(forcing) == photolysis_names
+    assert len(photolysis_names) == 41
+    assert len(set(forcing.values())) == 32
     assert {entry["phase"] for entry in document["species"]} >= {"gas", "aerosol"}

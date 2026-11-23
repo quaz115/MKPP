@@ -13,7 +13,7 @@ generated from the pinned EPA reaction and species tables in the adjacent
 `source` directory.
 
 The source snapshot is pinned to commit
-`8a71fdbfb2183a1e37a53eb237e265d12f09eb245` from
+`8a71fdbfb2183a1e37a53eb237e265d12f09b245` from
 [USEPA/CRACMM](https://github.com/USEPA/CRACMM). Regenerate the canonical input
 after updating those source files with:
 

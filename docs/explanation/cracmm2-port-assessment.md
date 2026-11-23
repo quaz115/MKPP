@@ -17,7 +17,9 @@ rates. A unified kinetic Jacobian does not automatically include processes that
 are calculated outside that Jacobian.
 
 The current [importer](../../scripts/import_cracmm2.py) produces 271 species and
-531 reactions: 454 ARRHENIUS, 64 UNKNOWN, 11 HETEROGENEOUS, and 2 PHOTOLYSIS.
+531 reactions: 457 ARRHENIUS, 41 PHOTOLYSIS, 11 TROE, 11 HETEROGENEOUS,
+6 UNKNOWN, 3 EP3, and 2 EP2. The 41 photolysis reactions reference 32 distinct
+CMAQ photolysis rate identifiers.
 The catalog has 32 variable aerosol species, but species membership alone does
 not establish working gas-particle exchange. The source is pinned as described
 in [Compile CRACMM2](../how-to/compile-cracmm2.md). These counts describe the
@@ -25,17 +27,15 @@ current imported snapshot, not the full set of CMAQ aerosol processes.
 
 ## Immediate correctness blockers
 
-1. **Separate and validate external kinetic rates.** The 64 UNKNOWN and 11
-   HETEROGENEOUS entries have named coefficients requiring host calculations.
-   [Lowering](../../src/mkpp/lowering.py) creates `Rate_<reaction_index>` for
-   them, and [expression formatting](../../src/mkpp/format_eqn.py) maps that
-   symbol to `jvals[reaction_index]`. The generated CRACMM2 kernel therefore
-   accesses slots such as `jvals[395]`, whereas the
-   [host API](../../src/mkpp/templates/host_api/mkpp_c_api.cpp.j2) allocates the
-   input using *photolysis count* (2 for this catalog). This can read outside
-   the supplied array. Give external rates a distinct, sized, named per-cell
-   interface; reject missing or non-finite coefficients before integration.
-   Keep photolysis indices separate from reaction indices and document units.
+1. **Validate external kinetic rates.** The 6 UNKNOWN and 11 HETEROGENEOUS
+   entries need per-cell host coefficients in addition to the photolysis rates.
+   The [generated CRACMM2 kernel](../../mkpp-generated/cracmm2/rates.hpp)
+   reads external-rate slots through `jvals[431]`.
+   The [host C API](../../src/mkpp/templates/host_api/mkpp_c_api.cpp.j2)
+   checks the supplied runtime parameter count in `mkpp_set_rate_parameter_ptrs`.
+   Direct kernel callers must also provide the full extent and bind each rate
+   to the correct slot. Test that mapping and its units with distinct values
+   for photolysis, heterogeneous uptake, and the six custom rates.
 
 2. **Resolve particle products and CMAQ tracking intermediates.** When a
    reaction references a name missing from the species table, the
@@ -53,9 +53,9 @@ current imported snapshot, not the full set of CMAQ aerosol processes.
    a 64-element `jvals` buffer. That cannot validate CRACMM2 chemistry and is
    too small for its generated external-rate indices. The
    [catalog test](../../tests/integration/solver_benchmark/test_extended_mechanisms.py)
-   checks provenance and counts, not physical rates or aerosol outcomes. Fix
-   the rate contract first, then test CRACMM2 with named species and reference
-   values from an independently configured CMAQ box case.
+   checks provenance, reaction types, and photolysis metadata. Supply the
+   full forcing array, then test CRACMM2 with named species and reference
+   gas and particle concentrations from an independently configured CMAQ box case.
 
 ## Missing or unconnected physical processes
 

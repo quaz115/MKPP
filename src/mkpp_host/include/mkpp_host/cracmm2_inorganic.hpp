@@ -24,10 +24,11 @@ struct Cracmm2ThermoEnvironment {
     double organic_density_kg_m3{1000.0};
 };
 
-// Organic-associated water is included in total water. These are diagnostics.
-struct Cracmm2AerosolWater {
+struct Cracmm2ThermoDiagnostics {
+    // Organic-associated water is included in total aerosol water.
     double total_kg_m3{};
     double organic_kg_m3{};
+    double hydronium_cm3{}; // aqueous H3O+ ions per cm3 of air (CRACMM2 AH3OP)
 };
 
 enum class Cracmm2ThermoStatus { success, invalid_input, unsupported_input, solver_diagnostic, invalid_result };
@@ -38,7 +39,7 @@ enum class Cracmm2ThermoStatus { success, invalid_input, unsupported_input, solv
 // condensed H2SO4, organic nitrates, or water to the host chemical state.
 inline Cracmm2ThermoStatus partition_cracmm2_inorganic(Cracmm2InorganicState& state,
                                                       const Cracmm2ThermoEnvironment& env,
-                                                      Cracmm2AerosolWater& water) {
+                                                      Cracmm2ThermoDiagnostics& diagnostics) {
     constexpr double to_mol_m3 = 1.0e6 / 6.02214076e23;
     auto nonnegative = [](double value) { return std::isfinite(value) && value >= 0.0; };
 
@@ -61,7 +62,7 @@ inline Cracmm2ThermoStatus partition_cracmm2_inorganic(Cracmm2InorganicState& st
         if (env.organic_mass_kg_m3 > 0.0 && env.organic_kappa > 0.0) {
             return Cracmm2ThermoStatus::unsupported_input;
         }
-        water = {};
+        diagnostics = {};
         return Cracmm2ThermoStatus::success;
     }
 
@@ -97,6 +98,16 @@ inline Cracmm2ThermoStatus partition_cracmm2_inorganic(Cracmm2InorganicState& st
         return Cracmm2ThermoStatus::invalid_result;
     }
 
+    // Lite molal[1] corresponds to legacy AERLIQ(1), moles of aqueous H+
+    // per m3 of AIR. Each ion contributes one AH3OP formula unit. A dry cell
+    // or one at Lite's liquid-water floor has no resolved aqueous hydronium.
+    constexpr double water_floor_kg_m3 = 1.0e-20;
+    const bool dry = solved.dryf != 0 || solved.water <= water_floor_kg_m3;
+    const double hydronium_cm3 = dry ? 0.0 : solved.molal[1] / to_mol_m3;
+    if (!nonnegative(hydronium_cm3)) {
+        return Cracmm2ThermoStatus::invalid_result;
+    }
+
     const std::array<double, 3> gas_mol_m3 = {solved.gnh3, solved.ghno3, solved.ghcl};
     std::array<double, 3> gas_host{};
     for (std::size_t i = 0; i < gas_mol_m3.size(); ++i) {
@@ -119,7 +130,7 @@ inline Cracmm2ThermoStatus partition_cracmm2_inorganic(Cracmm2InorganicState& st
     state.ano3 = totals[3] - state.hno3;
     state.hcl = gas_host[2];
     state.acl = totals[4] - state.hcl;
-    water = {solved.water, solved.watcmp[23]};
+    diagnostics = {solved.water, solved.watcmp[23], hydronium_cm3};
     return Cracmm2ThermoStatus::success;
 }
 

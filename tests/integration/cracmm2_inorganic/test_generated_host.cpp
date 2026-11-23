@@ -78,6 +78,7 @@ TEST(Cracmm2GeneratedHost, AppliesDarkKineticsThenPartitionsOneOfTwoCells) {
     EXPECT_GT(state[offset("ANH4", target)], after_kinetics[offset("ANH4", target)]);
     EXPECT_GT(state[offset("AH2O", target)], 0.);
     EXPECT_GT(state[offset("AORGH2O", target)], 0.);
+    EXPECT_GT(state[offset("AH3OP", target)], 0.);
 }
 
 } // namespace

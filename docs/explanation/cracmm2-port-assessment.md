@@ -50,7 +50,7 @@ current imported snapshot, not the full set of CMAQ aerosol processes.
 3. **Extend the CRACMM2 kinetic reference beyond a single dark case.**
    The [CRACMM2 end-to-end runner](../../tests/integration/e2e_validation/test_e2e_mechanisms.cpp)
    initializes NO and O3 by name and checks their initial losses and NO2
-   production against the analytical R036 rate. The case deliberately disables
+   production against the analytical R036 and R052 rates in a specified bath gas. The case deliberately disables
    external forcing. Add matched, nonzero per-cell coefficients for tests of
    photolysis and heterogeneous uptake against an independently configured box.
 
@@ -91,7 +91,7 @@ current imported snapshot, not the full set of CMAQ aerosol processes.
 
 7. **Other named rates and photolysis.** Importing an UNKNOWN expression
    preserves its EPA source string rather than its executable CMAQ rate law;
-   some include photolysis and specialized temperature/pressure dependencies.
+   the remaining six include special temperature, pressure and seawater dependencies.
    Inventory every named forcing, implement or provide its correct calculation,
    and compare values over day/night and relevant meteorological ranges. Do
    not substitute zero, guessed constants, or unrelated photolysis slots.
@@ -102,23 +102,23 @@ The [single-cell host implementation and build instructions](../how-to/compile-c
 cover forward bulk equilibrium. The remaining design items below concern the
 host process, modal and heterogeneous coupling, and scientific validation:
 
-1. **Use one owner for inorganic equilibrium.** Link the pinned `isorropia`
-   CMake target into a CAT-Chem/MKPP host adapter and invoke
-   `Isorropia::Solver::solve(Input, State)` per cell, or use
-   `isorropia_solve_c` at a C/Fortran boundary. The existing
+1. **Use one owner for inorganic equilibrium.** Link the opt-in
+   `MKPP::cracmm2_inorganic` target. The host adapter calls
+   `isorropia_solve_c` per cell. The pinned standalone
    [batched helper](../../src/isorropialite/include/Isorropia/BatchedSolver.hpp)
-   loops over cells on the host; it is not evidence of a GPU-resident Kokkos
-   kernel. Keep the narrow inline NH4/NO3/SO4 relaxation disabled for these
-   same components to avoid equilibrating them twice.
+   returns `waer`, which the forward solver initializes from the aerosol input.
+   The adapter obtains its three gas amounts from the scalar output and
+   calculates particulate complements. Keep the inline NH4/NO3/SO4 relaxation
+   disabled for these same components to avoid equilibrating them twice.
 
 2. **Assemble component totals with an explicit unit and phase map.** Populate
    `Input::w` in its declared order: Na, H2SO4 (total sulfate), NH3 (total
    reduced ammonia), HNO3 (total inorganic nitrate), HCl (total chloride),
-   Ca, K, Mg. Start from CRACMM2 gas `NH3`, `HNO3`, `HCL`, `SULF` and particle
+   Ca, K, Mg. The adapter uses CRACMM2 gases `NH3`, `HNO3`, `HCL` and particles
    `ANA`, `ASO4`, `ANH4`, `ANO3`, `ACL`, `ACA`, `AK`, `AMG`.
-   `SULF` is the condensable sulfuric-acid pool; do not equilibrate `SO2` as
-   sulfate. Verify each component's host-state mapping before enabling the
-   coupling. Convert MKPP/CAT-Chem concentrations to the solver's
+   The aerosol host determines how much gaseous `SULF` condenses or nucleates
+   and includes that amount in particulate `ASO4` before the call. `SO2`
+   remains in gas chemistry. Convert MKPP/CAT-Chem concentrations to the solver's
    direct-call basis of mol per cubic meter of air. The standalone CLI accepts
    micromoles or micrograms per cubic meter and converts them before calling
    the solver. Use the specific ion or acid-equivalent molecular weight for
@@ -129,8 +129,9 @@ host process, modal and heterogeneous coupling, and scientific validation:
    component and liquid/solid results and its gas `gnh3`, `ghno3`, `ghcl` to
    update both sides of each partition, without creating or losing N, S, Cl,
    or cations. Translate `State::water` (kg/m3 of air) and partition the organic water
-   contribution. Before adding pH, establish the H+ amount, liquid-water mass,
-   activity convention, and dry-cell behavior explicitly; reconcile `AH2O` and organic-water `AORGH2O` so water is not
+   contribution. The host adapter writes aqueous H+ as the AH3OP tracer. Any
+   pH diagnostic additionally requires a stated activity convention, liquid-water
+   basis and dry-cell treatment; reconcile `AH2O` and organic-water `AORGH2O` so water is not
    counted twice. CRACMM2's `ASO4`, `ANO3`, and `ANH4` are aggregate catalog
    names, not a complete CMAQ modal allocation: CAT-Chem must own any size-bin
    mapping and conserve totals when writing them back. Check solver errors,

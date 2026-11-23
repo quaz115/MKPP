@@ -40,22 +40,35 @@ TEST(E2ESolverValidation, Cracmm2DarkNoOzoneTitration) {
     Kokkos::deep_copy(state, 0.0);
     Kokkos::deep_copy(forcing, 0.0);
 
-    // At t=0 only R036 is active. Photolysis, heterogeneous uptake and
-    // externally calculated custom rates are disabled for this isolated case.
+    // Fixed bath species enter the kinetic expressions separately from the
+    // runtime air density. Photolysis and all external rates are zero.
     constexpr double temperature = 298.15;  // K
+    constexpr double pressure = 101325.0;   // Pa
+    constexpr double rh = 0.5;
+    constexpr double air_density = pressure / (1.380649e-23 * temperature) / 1.0e6;  // molecule cm-3
+    constexpr double water_fraction = rh * 3169.0 / pressure;  // saturation pressure at 298.15 K, Pa
+    constexpr double dry_density = air_density * (1.0 - water_fraction);
     constexpr double initial_no = 1.0e11;   // molecule cm-3
     constexpr double initial_o3 = 2.0e11;   // molecule cm-3
+    state(mechanism::AIR) = air_density;
+    state(mechanism::M) = air_density;
+    state(mechanism::N2) = 0.7808 * dry_density;
+    state(mechanism::O2) = 0.2095 * dry_density;
+    state(mechanism::H2O) = water_fraction * air_density;
     state(mechanism::NO) = initial_no;
     state(mechanism::O3) = initial_o3;
 
     Solver solver;
-    solver.compute_rates(state, tendency, forcing, temperature);
-    const double rate = 3.0e-12 * std::exp(-1500.0 / temperature) * initial_no * initial_o3;
-    EXPECT_NEAR(tendency(mechanism::NO), -rate, rate * 1.0e-12);
-    EXPECT_NEAR(tendency(mechanism::O3), -rate, rate * 1.0e-12);
-    EXPECT_NEAR(tendency(mechanism::NO2), rate, rate * 1.0e-12);
+    solver.compute_rates(state, tendency, forcing, temperature, rh, air_density);
+    // R036 consumes O3 + NO. R052 consumes 2 NO + O2 and produces 2 NO2.
+    const double r36 = 3.0e-12 * std::exp(-1500.0 / temperature) * initial_no * initial_o3;
+    const double r52 = 4.25e-39 * std::exp(663.5 / temperature) * initial_no * initial_no * state(mechanism::O2);
+    const double no_loss = r36 + 2.0 * r52;
+    EXPECT_NEAR(tendency(mechanism::NO), -no_loss, no_loss * 1.0e-12);
+    EXPECT_NEAR(tendency(mechanism::O3), -r36, r36 * 1.0e-12);
+    EXPECT_NEAR(tendency(mechanism::NO2), no_loss, no_loss * 1.0e-12);
 
-    solver.integrate(1.0, state, forcing, temperature);
+    solver.integrate(1.0, state, forcing, temperature, rh, air_density);
     EXPECT_GT(state(mechanism::NO), 0.0);
     EXPECT_LT(state(mechanism::NO), initial_no);
     EXPECT_GT(state(mechanism::O3), 0.0);

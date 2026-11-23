@@ -25,3 +25,4 @@ if(MKPP_TEST_LITE_FORTRAN)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/generated_host.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmaq_ii.cmake")

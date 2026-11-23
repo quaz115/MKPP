@@ -1,11 +1,11 @@
 ! Test-only wrapper for the original ISORROPIA-Lite fixed-form Fortran.
 ! ISOROPIA's arrays and units are documented in isolite1_0_src/isocom.f.
-subroutine mkpp_reference_lite(totals, organic, rh, temperature, gases, particles, sulfate, water, status) bind(C)
+subroutine mkpp_reference_lite(totals, organic, rh, temperature, gases, particles, sulfate, water, hydronium, status) bind(C)
   use iso_c_binding, only: c_double, c_int
   implicit none
   real(c_double), intent(in) :: totals(8), organic(3)
   real(c_double), value :: rh, temperature
-  real(c_double), intent(out) :: gases(3), particles(3), sulfate, water(2)
+  real(c_double), intent(out) :: gases(3), particles(3), sulfate, water(2), hydronium
   integer(c_int), intent(out) :: status
   real(c_double) :: control(1), total_out(8), liquid(39), solid(19), diagnostics(9)
   character(len=15) :: regime
@@ -31,4 +31,5 @@ subroutine mkpp_reference_lite(totals, organic, rh, temperature, gases, particle
             solid(13) + solid(14) + solid(17)
   ! The legacy result expresses water in mol/m3. The C++ host reports kg/m3.
   water = 0.018_c_double * [liquid(8), liquid(39)]
+  hydronium = liquid(1) ! mol per m3 of air
 end subroutine mkpp_reference_lite

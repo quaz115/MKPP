@@ -16,7 +16,7 @@ using namespace mkpp::host;
 // change species order and interleave unrelated species to detect positional
 // assumptions independently of the order used by a particular kinetics build.
 struct PermutedContext {
-    std::array<std::string_view, 16> names = {"ASO4", "HNO3", "O3", "ANA", "ACL", "AH2O",
+    std::array<std::string_view, 17> names = {"ASO4", "HNO3", "O3", "ANA", "ACL", "AH2O", "AH3OP",
         "NH3", "ACA", "AORGH2O", "AMG", "SULF", "ANO3", "AK", "ANH4", "HCL", "OH"};
 
     std::size_t getSpeciesCount() const { return names.size(); }
@@ -60,9 +60,9 @@ TEST(Cracmm2InorganicBinding, EquilibratesOneCellOfLayoutLeftHostState) {
     state[offset("AK")] = cell.ak;
     state[offset("AMG")] = cell.amg;
     auto expected = state;
-    Cracmm2AerosolWater water{};
+    Cracmm2ThermoDiagnostics diagnostics{};
     const Cracmm2ThermoEnvironment env{291.89, 0.83, 1.508e-9, 0.15, 1000.0};
-    ASSERT_EQ(partition_cracmm2_inorganic(cell, env, water), Cracmm2ThermoStatus::success);
+    ASSERT_EQ(partition_cracmm2_inorganic(cell, env, diagnostics), Cracmm2ThermoStatus::success);
     expected[offset("NH3")] = cell.nh3;
     expected[offset("ANH4")] = cell.anh4;
     expected[offset("HNO3")] = cell.hno3;
@@ -70,8 +70,9 @@ TEST(Cracmm2InorganicBinding, EquilibratesOneCellOfLayoutLeftHostState) {
     expected[offset("HCL")] = cell.hcl;
     expected[offset("ACL")] = cell.acl;
     constexpr double molecules_per_kg_m3 = 6.02214076e23 / (0.018 * 1.0e6);
-    expected[offset("AH2O")] = (water.total_kg_m3 - water.organic_kg_m3) * molecules_per_kg_m3;
-    expected[offset("AORGH2O")] = water.organic_kg_m3 * molecules_per_kg_m3;
+    expected[offset("AH2O")] = (diagnostics.total_kg_m3 - diagnostics.organic_kg_m3) * molecules_per_kg_m3;
+    expected[offset("AORGH2O")] = diagnostics.organic_kg_m3 * molecules_per_kg_m3;
+    expected[offset("AH3OP")] = diagnostics.hydronium_cm3;
     ASSERT_EQ(binding.partition_cell(state, cells, 1, env), Cracmm2ThermoStatus::success);
     EXPECT_EQ(state, expected); // Includes first cell, cations, SULF and unrelated species.
 

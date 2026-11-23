@@ -61,10 +61,10 @@ ctest --test-dir build-lite -L cracmm2_inorganic --output-on-failure --no-tests=
 
 The reference option requires a Fortran compiler and builds the original Lite
 routines from the pinned submodule. Four forward box cases compare the three gas
-amounts, their particulate families, sulfate, and organic and total water. The condensed
+amounts, their particulate families, sulfate, particulate hydronium and organic and total water. The condensed
 reference sums the corresponding aqueous and solid species independently.
-The cases cover a wet ammonium–nitrate–sulfate mixture and a wet mixture with
-sodium, chloride and crustal ions, a cold inorganic-only mixture, and a sulfate-rich case. The comparison uses 1% of the reference
+The cases cover a wet ammonium–nitrate–sulfate mixture, a wet mixture with
+sodium, chloride and crustal ions, colder inorganic-only aerosol and sulfate-rich aerosol. The comparison uses 1% of the reference
 plus 5 pmol m⁻³ for each chemical family or 0.1 ng m⁻³ for water. These
 tolerances apply to these fixtures only.
 
@@ -75,8 +75,23 @@ an MKPP Python environment, emit a matching bundle, and repeat the build:
 python3 -m mkpp.cli compile mechanisms/openatmos/cracmm2/mechanism.json --test-env example_env.yaml --host-api --no-cache --out build-host-api
 cmake -S . -B build-lite -DMKPP_CRACMM2_HOST_API_DIR="$PWD/build-host-api"
 cmake --build build-lite --target cracmm2_inorganic_checks e2e_cracmm2_runner --parallel 2
-ctest --test-dir build-lite -R 'CRACMM2Inorganic_|cracmm2_generated_host_thermodynamics|E2ESolver_cracmm2' --output-on-failure
+ctest --test-dir build-lite -L cracmm2_inorganic --output-on-failure
+ctest --test-dir build-lite -R '^E2ESolver_cracmm2
 ```
+
+For a cross-model comparison, supply `-DMKPP_CMAQ_ISORROPIA_II_DIR=<cmaq>/CCTM/src/aero/aero6`
+at configure time, build `cracmm2_inorganic_checks`, and run
+`ctest --test-dir build-lite -R '^cracmm2_cmaq_ii_' --verbose`. CI uses the
+[CMAQ 5.5.0.4 reference sources](https://github.com/USEPA/CMAQ/tree/1b70e0a395fc42cc34a4355807d39df1d3dbae84/CCTM/src/aero/aero6).
+Compare forward metastable inorganic-only cases at the same temperature, RH
+and component totals. Cross-model differences quantify sensitivity to the
+thermodynamics implementation. The separate legacy Lite tests supply the
+same-model numerical acceptance criteria.
+
+CMAQ applies forward equilibrium to fine modes. In hybrid mode it also uses
+a reverse equilibrium calculation at the coarse-particle surface to drive
+time-dependent mass transfer. Validation of that coarse-mode path requires a size-resolved transfer test. See the [CMAQ fine-mode calculation](https://github.com/USEPA/CMAQ/blob/1b70e0a395fc42cc34a4355807d39df1d3dbae84/CCTM/src/aero/aero6/aero_subs.F#L1465-L1506)
+and [coarse-mode calculation](https://github.com/USEPA/CMAQ/blob/1b70e0a395fc42cc34a4355807d39df1d3dbae84/CCTM/src/aero/aero6/aero_subs.F#L1198-L1211).
 
 ### Call from a CRACMM2 host
 
@@ -101,7 +116,64 @@ temperature in K and RH as a fraction. The adapter converts the eight
 component totals to mol m⁻³ of air before the direct solver call. Optional
 organic forcing comprises dry organic mass in kg m⁻³, hygroscopicity and
 material density in kg m⁻³. It writes back NH3/ANH4, HNO3/ANO3 and HCL/ACL.
-AH2O receives the inorganic water and AORGH2O the organic share. Select one
+AH2O receives inorganic water and AORGH2O the organic share. AH3OP receives
+one hydronium ion per reported aqueous H+ ion. The direct solver reports the
+H+ amount per air volume. A pH diagnostic also requires an explicit water basis and activity convention. Select one
+process to own these water tracers. Provide the host organic forcing whenever
+organic-associated water is intended. The typed single-cell interface
+`partition_cracmm2_inorganic` can instead return water diagnostics to a
+driver that owns those tracers.
+
+Sulfate supplied to the adapter is particulate ASO4. The host must handle
+SULF condensation and nucleation before supplying the particulate pool.
+The adapter operates on bulk amounts and leaves modal redistribution, dry
+deposition, SOA chemistry, heterogeneous rate updates and the choice of
+chemistry timestep to the driving model. It must be scheduled once for each
+chosen equilibrium step. Compiling the kinetic mechanism alone does not
+schedule this process. Tests against legacy Lite and tests against a tagged
+CMAQ configuration with ISORROPIA II answer different scientific questions.
+ --output-on-failure
+```
+
+For a cross-model comparison, supply `-DMKPP_CMAQ_ISORROPIA_II_DIR=<cmaq>/CCTM/src/aero/aero6`
+at configure time and build `cracmm2_inorganic_checks`. CI uses the
+[CMAQ 5.5.0.4 reference sources](https://github.com/USEPA/CMAQ/tree/1b70e0a395fc42cc34a4355807d39df1d3dbae84/CCTM/src/aero/aero6).
+Compare forward metastable inorganic-only cases at the same temperature, RH
+and component totals. Cross-model differences quantify sensitivity to the
+thermodynamics implementation. The separate legacy Lite tests supply the
+same-model numerical acceptance criteria.
+
+CMAQ applies forward equilibrium to fine modes. In hybrid mode it also uses
+a reverse equilibrium calculation at the coarse-particle surface to drive
+time-dependent mass transfer. Validation of that coarse-mode path requires a size-resolved transfer test. See the [CMAQ fine-mode calculation](https://github.com/USEPA/CMAQ/blob/1b70e0a395fc42cc34a4355807d39df1d3dbae84/CCTM/src/aero/aero6/aero_subs.F#L1465-L1506)
+and [coarse-mode calculation](https://github.com/USEPA/CMAQ/blob/1b70e0a395fc42cc34a4355807d39df1d3dbae84/CCTM/src/aero/aero6/aero_subs.F#L1198-L1211).
+
+### Call from a CRACMM2 host
+
+Link your host to `MKPP::cracmm2_inorganic` and include
+`mkpp_host/cracmm2_inorganic_state.hpp`. Construct the binding once with the
+generated `mkpp::MechanismContext`. After a successful kinetic step on the
+host, pass the same writable concentration buffer registered with the
+context. Its storage is contiguous, with cell index varying fastest.
+
+```cpp
+mkpp::host::Cracmm2InorganicBinding binding(context);
+// At each thermodynamics step, after synchronizing state to host memory:
+const auto status = binding.partition_cell(concentrations, n_cells, cell, environment);
+if (status != mkpp::host::Cracmm2ThermoStatus::success) {
+    // The cell is unchanged. Propagate the failure to the model driver.
+    throw std::runtime_error("CRACMM2 inorganic equilibrium failed");
+}
+```
+
+Use molecules or ionic formula units cm⁻³ for the concentration buffer,
+temperature in K and RH as a fraction. The adapter converts the eight
+component totals to mol m⁻³ of air before the direct solver call. Optional
+organic forcing comprises dry organic mass in kg m⁻³, hygroscopicity and
+material density in kg m⁻³. It writes back NH3/ANH4, HNO3/ANO3 and HCL/ACL.
+AH2O receives inorganic water and AORGH2O the organic share. AH3OP receives
+one hydronium ion per reported aqueous H+ ion. The direct solver reports the
+H+ amount per air volume. A pH diagnostic also requires an explicit water basis and activity convention. Select one
 process to own these water tracers. Provide the host organic forcing whenever
 organic-associated water is intended. The typed single-cell interface
 `partition_cracmm2_inorganic` can instead return water diagnostics to a

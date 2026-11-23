@@ -8,7 +8,7 @@
 
 extern "C" void mkpp_reference_lite(const double* totals, const double* organic, double rh,
                                     double temperature, double* gases, double* particles,
-                                    double* sulfate, double* water, int* status);
+                                    double* sulfate, double* water, double* hydronium, int* status);
 
 namespace {
 struct Fixture {
@@ -55,10 +55,11 @@ int run(std::string_view name, const Fixture& fixture) {
   const std::array<double, 3> organic{fixture.organic_mass * 1.0e-9, 0.15, 1000.0};
   std::array<double, 3> gases{}, particles{};
   double sulfate{};
+  double hydronium{};
   std::array<double, 2> water{};
   int reference_status = -1;
   mkpp_reference_lite(totals.data(), organic.data(), fixture.rh, fixture.temperature, gases.data(),
-                      particles.data(), &sulfate, water.data(), &reference_status);
+                      particles.data(), &sulfate, water.data(), &hydronium, &reference_status);
   const bool expected_organic_water = fixture.organic_mass > 0.0 ? water[1] > 0.0 : water[1] == 0.0;
   if (reference_status != 0 || !(water[0] > 0.0) || !expected_organic_water ||
       !(particles[0] > 0.0) || !(sulfate > 0.0)) {
@@ -77,7 +78,7 @@ int run(std::string_view name, const Fixture& fixture) {
   host.ak = totals[6] * molecules_cm3_per_mol_m3;
   host.amg = totals[7] * molecules_cm3_per_mol_m3;
   const Cracmm2ThermoEnvironment environment{fixture.temperature, fixture.rh, organic[0], organic[1], organic[2]};
-  Cracmm2AerosolWater host_water{};
+  Cracmm2ThermoDiagnostics host_water{};
   if (partition_cracmm2_inorganic(host, environment, host_water) != Cracmm2ThermoStatus::success) {
     std::cerr << "Host thermodynamic solve failed\n";
     return 1;
@@ -99,6 +100,7 @@ int run(std::string_view name, const Fixture& fixture) {
                   particles[i], molar_tolerance);
   }
   ok &= compare("ASO4", "mol m-3", host.aso4 / molecules_cm3_per_mol_m3, sulfate, molar_tolerance);
+  ok &= compare("AH3OP", "mol m-3", host_water.hydronium_cm3 / molecules_cm3_per_mol_m3, hydronium, 1.0e-16);
   ok &= compare("total water", "kg m-3", host_water.total_kg_m3, water[0], water_tolerance);
   ok &= compare("organic water", "kg m-3", host_water.organic_kg_m3, water[1], water_tolerance);
   return ok ? 0 : 1;

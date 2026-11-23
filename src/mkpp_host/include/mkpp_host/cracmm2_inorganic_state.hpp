@@ -57,16 +57,16 @@ public:
         state.ak = value(ak);
         state.amg = value(amg);
 
-        Cracmm2AerosolWater water{};
-        const auto status = partition_cracmm2_inorganic(state, env, water);
+        Cracmm2ThermoDiagnostics diagnostics{};
+        const auto status = partition_cracmm2_inorganic(state, env, diagnostics);
         if (status != Cracmm2ThermoStatus::success) {
             return status;
         }
         // AH2O and AORGH2O are separate CRACMM2 tracers, each with declared
         // molar mass 18 g/mol. Lite reports total water including organic water.
         constexpr double water_per_kg_m3 = 6.02214076e23 / (0.018 * 1.0e6);
-        const double inorganic_water = (water.total_kg_m3 - water.organic_kg_m3) * water_per_kg_m3;
-        const double organic_water = water.organic_kg_m3 * water_per_kg_m3;
+        const double inorganic_water = (diagnostics.total_kg_m3 - diagnostics.organic_kg_m3) * water_per_kg_m3;
+        const double organic_water = diagnostics.organic_kg_m3 * water_per_kg_m3;
         if (!std::isfinite(inorganic_water) || !std::isfinite(organic_water) ||
             inorganic_water < 0.0 || organic_water < 0.0) {
             return Cracmm2ThermoStatus::invalid_result;
@@ -80,13 +80,14 @@ public:
         value(acl) = state.acl;
         value(ah2o) = inorganic_water;
         value(aorgh2o) = organic_water;
+        value(ah3op) = diagnostics.hydronium_cm3;
         return Cracmm2ThermoStatus::success;
     }
 
 private:
-    enum Slot { nh3, anh4, hno3, ano3, hcl, acl, aso4, ana, aca, ak, amg, ah2o, aorgh2o, count };
+    enum Slot { nh3, anh4, hno3, ano3, hcl, acl, aso4, ana, aca, ak, amg, ah2o, aorgh2o, ah3op, count };
     static constexpr std::array<const char*, count> names_ = {
-        "NH3", "ANH4", "HNO3", "ANO3", "HCL", "ACL", "ASO4", "ANA", "ACA", "AK", "AMG", "AH2O", "AORGH2O"};
+        "NH3", "ANH4", "HNO3", "ANO3", "HCL", "ACL", "ASO4", "ANA", "ACA", "AK", "AMG", "AH2O", "AORGH2O", "AH3OP"};
     std::array<std::size_t, count> indices_{};
     std::size_t species_count_;
 };

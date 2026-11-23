@@ -59,7 +59,7 @@ current imported snapshot, not the full set of CMAQ aerosol processes.
 
 ## Missing or unconnected physical processes
 
-4. **Connect the existing C++ ISORROPIA-Lite.** MKPP pins a standalone
+4. **Validate and schedule the optional host-side ISORROPIA-Lite adapter.** MKPP pins a standalone
    [C++ ISORROPIA-Lite submodule](../../src/isorropialite/README.md) with a
    [forward/reverse solver](../../src/isorropialite/include/Isorropia/Solver.hpp)
    for Na, sulfate, ammonia, nitrate, chloride, Ca, K, Mg, and aerosol water.
@@ -69,9 +69,10 @@ current imported snapshot, not the full set of CMAQ aerosol processes.
    [equilibrium registry](../../src/mkpp/equilibrium/registry.py), which emits
    inline C++ only when a mechanism declares EQUILIBRIUM reactions. CRACMM2
    declares none; its generated kernel neither calls the submodule nor embeds
-   its thermodynamics. Wire the pinned C++ solver into the host process and
-   establish scientific parity with CMAQ's ISORROPIA II configuration rather
-   than treating the two implementations as interchangeable.
+   its thermodynamics. An [opt-in host adapter](../../src/mkpp_host/include/mkpp_host/cracmm2_inorganic_state.hpp)
+   now calls the pinned solver and writes bulk gas, particle and water results
+   back to the host cell when invoked. Host scheduling and comparison with
+   a matched CMAQ ISORROPIA II configuration remain open.
 
 5. **Condensation, evaporation, and nucleation.** CRACMM's condensable
    precursors and particle species do not implement CMAQ's inorganic
@@ -100,7 +101,9 @@ current imported snapshot, not the full set of CMAQ aerosol processes.
 
 ## Proposed CRACMM2 to ISORROPIA-Lite contract
 
-The following is an integration design, **not an implemented MKPP interface**:
+The [single-cell host implementation and build instructions](../how-to/compile-cracmm2.md#test-bulk-inorganic-equilibrium-on-the-host)
+cover forward bulk equilibrium. The remaining design items below concern the
+host process, modal and heterogeneous coupling, and scientific validation:
 
 1. **Use one owner for inorganic equilibrium.** Link the pinned `isorropia`
    CMake target into a CAT-Chem/MKPP host adapter and invoke
@@ -119,17 +122,18 @@ The following is an integration design, **not an implemented MKPP interface**:
    `SULF` is the condensable sulfuric-acid pool; do not equilibrate `SO2` as
    sulfate. Verify each component's host-state mapping before enabling the
    coupling. Convert MKPP/CAT-Chem concentrations to the solver's
-   declared micromoles per cubic meter of air or micrograms per cubic meter of
-   air consistently, using species molecular weights; do not add gas and
-   particle values with different units. Provide temperature in K and RH as
+   direct-call basis of mol per cubic meter of air. The standalone CLI accepts
+   micromoles or micrograms per cubic meter and converts them before calling
+   the solver. Use the specific ion or acid-equivalent molecular weight for
+   each mass input. Provide temperature in K and RH as
    a fraction; select forward mode (`iprob = 0`) for total-component inputs.
 
 3. **Return a conserving gas/particle update.** Use the solver's aerosol
    component and liquid/solid results and its gas `gnh3`, `ghno3`, `ghcl` to
    update both sides of each partition, without creating or losing N, S, Cl,
-   or cations. Translate `State::water` (kg/m3 of air), ion molalities, and
-   hydrogen activity into aerosol-water and acidity diagnostics with explicit
-   conversions; reconcile `AH2O` and organic-water `AORGH2O` so water is not
+   or cations. Translate `State::water` (kg/m3 of air) and partition the organic water
+   contribution. Before adding pH, establish the H+ amount, liquid-water mass,
+   activity convention, and dry-cell behavior explicitly; reconcile `AH2O` and organic-water `AORGH2O` so water is not
    counted twice. CRACMM2's `ASO4`, `ANO3`, and `ANH4` are aggregate catalog
    names, not a complete CMAQ modal allocation: CAT-Chem must own any size-bin
    mapping and conserve totals when writing them back. Check solver errors,

@@ -1,0 +1,40 @@
+name: CRACMM2 inorganic thermodynamics
+
+on:
+  push:
+    paths:
+      - 'src/isorropialite'
+      - 'src/mkpp_host/CMakeLists.txt'
+      - 'src/mkpp_host/include/mkpp_host/cracmm2_inorganic*.hpp'
+      - 'tests/integration/cracmm2_inorganic/**'
+      - 'mechanisms/openatmos/cracmm2/mechanism.json'
+      - '.github/workflows/cracmm2-inorganic.yml'
+  pull_request:
+    paths:
+      - 'src/isorropialite'
+      - 'src/mkpp_host/CMakeLists.txt'
+      - 'src/mkpp_host/include/mkpp_host/cracmm2_inorganic*.hpp'
+      - 'tests/integration/cracmm2_inorganic/**'
+      - 'mechanisms/openatmos/cracmm2/mechanism.json'
+      - '.github/workflows/cracmm2-inorganic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compare-lite:
+    runs-on: ubuntu-latest
+    container: ghcr.io/bbakernoaa/mkpp-ci-env:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Configure the host adapter and independent Fortran reference
+        run: >-
+          cmake -S . -B build-lite -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DKokkos_ROOT=/opt/kokkos -DBUILD_TESTING=ON
+          -DMKPP_ENABLE_CRACMM2_ISORROPIA_LITE=ON -DMKPP_TEST_LITE_FORTRAN=ON
+      - name: Build the thermodynamics checks
+        run: cmake --build build-lite --target cracmm2_inorganic_checks --parallel 2
+      - name: Run thermodynamics checks
+        run: ctest --test-dir build-lite -L cracmm2_inorganic --output-on-failure --no-tests=error

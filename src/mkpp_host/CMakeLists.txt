@@ -31,3 +31,27 @@ if(MKPP_ENABLE_KOKKOS_KERNELS)
   endif()
   target_compile_definitions(mkpp_host INTERFACE MKPP_HAS_KOKKOS_KERNELS)
 endif()
+
+option(MKPP_ENABLE_CRACMM2_ISORROPIA_LITE
+       "Build the host-side bulk CRACMM2 inorganic equilibrium adapter" OFF)
+if(MKPP_ENABLE_CRACMM2_ISORROPIA_LITE)
+  set(lite_dir "${CMAKE_CURRENT_SOURCE_DIR}/../isorropialite")
+  if(NOT EXISTS "${lite_dir}/src/Solver.cpp")
+    message(FATAL_ERROR "Initialize the pinned submodule: git submodule update --init src/isorropialite")
+  endif()
+
+  # Build the C ABI from the pinned solver sources. Its standalone project also
+  # configures a CLI, a Fortran module and tests; none is needed by a host caller.
+  add_library(
+    mkpp_cracmm2_isorropia_lite STATIC
+    "${lite_dir}/src/Solver.cpp"
+    "${lite_dir}/src/Thermodynamics.cpp"
+    "${lite_dir}/src/WaterActivities.cpp"
+    "${lite_dir}/src/ForwardSolvers.cpp"
+    "${lite_dir}/src/ActivityCoefficients_KM.cpp"
+    "${lite_dir}/src/ReverseSolvers.cpp")
+  add_library(MKPP::cracmm2_inorganic ALIAS mkpp_cracmm2_isorropia_lite)
+  target_include_directories(mkpp_cracmm2_isorropia_lite PUBLIC "${lite_dir}/include")
+  target_link_libraries(mkpp_cracmm2_isorropia_lite PUBLIC mkpp_host)
+  set_target_properties(mkpp_cracmm2_isorropia_lite PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()

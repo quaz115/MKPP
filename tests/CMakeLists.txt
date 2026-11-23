@@ -22,3 +22,7 @@ target_link_libraries(
           e2e_saprc99_mini_compiled_kernels
           e2e_cracmm2_compiled_kernels)
 add_test(NAME test_host_dispatcher COMMAND test_host_dispatcher)
+
+if(MKPP_ENABLE_CRACMM2_ISORROPIA_LITE)
+  add_subdirectory(integration/cracmm2_inorganic)
+endif()

@@ -47,15 +47,12 @@ current imported snapshot, not the full set of CMAQ aerosol processes.
    a CMAQ bookkeeping intermediate, or a transfer into an aerosol mode; verify
    both reactant loss and particle production, including C/N/S conservation.
 
-3. **Replace the shared CRACMM2 test setup with a mechanism-specific case.**
-   The [end-to-end runner](../../tests/integration/e2e_validation/test_e2e_mechanisms.cpp)
-   initializes large mechanisms with SAPRC-99-specific species indices and uses
-   a 64-element `jvals` buffer. That cannot validate CRACMM2 chemistry and is
-   too small for its generated external-rate indices. The
-   [catalog test](../../tests/integration/solver_benchmark/test_extended_mechanisms.py)
-   checks provenance, reaction types, and photolysis metadata. Supply the
-   full forcing array, then test CRACMM2 with named species and reference
-   gas and particle concentrations from an independently configured CMAQ box case.
+3. **Extend the CRACMM2 kinetic reference beyond a single dark case.**
+   The [CRACMM2 end-to-end runner](../../tests/integration/e2e_validation/test_e2e_mechanisms.cpp)
+   initializes NO and O3 by name and checks their initial losses and NO2
+   production against the analytical R036 rate. The case deliberately disables
+   external forcing. Add matched, nonzero per-cell coefficients for tests of
+   photolysis and heterogeneous uptake against an independently configured box.
 
 ## Missing or unconnected physical processes
 

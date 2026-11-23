@@ -60,13 +60,23 @@ ctest --test-dir build-lite -L cracmm2_inorganic --output-on-failure --no-tests=
 ```
 
 The reference option requires a Fortran compiler and builds the original Lite
-routines from the pinned submodule. Two forward box cases compare the three gas
-amounts, their particulate families, and organic and total water. The condensed
+routines from the pinned submodule. Four forward box cases compare the three gas
+amounts, their particulate families, sulfate, and organic and total water. The condensed
 reference sums the corresponding aqueous and solid species independently.
 The cases cover a wet ammonium–nitrate–sulfate mixture and a wet mixture with
-sodium, chloride and crustal ions. The comparison uses 1% of the reference
+sodium, chloride and crustal ions, a cold inorganic-only mixture, and a sulfate-rich case. The comparison uses 1% of the reference
 plus 5 pmol m⁻³ for each chemical family or 0.1 ng m⁻³ for water. These
 tolerances apply to these fixtures only.
+
+To exercise both kinetics and partitioning through the generated host API, use
+an MKPP Python environment, emit a matching bundle, and repeat the build:
+
+```sh
+python3 -m mkpp.cli compile mechanisms/openatmos/cracmm2/mechanism.json --test-env example_env.yaml --host-api --no-cache --out build-host-api
+cmake -S . -B build-lite -DMKPP_CRACMM2_HOST_API_DIR="$PWD/build-host-api"
+cmake --build build-lite --target cracmm2_inorganic_checks e2e_cracmm2_runner --parallel 2
+ctest --test-dir build-lite -R 'CRACMM2Inorganic_|cracmm2_generated_host_thermodynamics|E2ESolver_cracmm2' --output-on-failure
+```
 
 ### Call from a CRACMM2 host
 

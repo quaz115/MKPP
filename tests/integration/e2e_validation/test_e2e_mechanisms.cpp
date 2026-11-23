@@ -1,5 +1,6 @@
 #include <Kokkos_Core.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -18,6 +19,51 @@ using ConcentrationsView = Kokkos::View<double****, Kokkos::LayoutRight, typenam
 
 #include "mkpp_host/dispatcher.hpp"
 
+#if defined(MKPP_HOST_MECH_CRACMM2)
+// One slot per reaction covers the reaction-indexed external coefficients in
+// the checked-in split kernels. Honor any larger extent declared by codegen.
+template <class Solver>
+constexpr int cracmm2_forcing_extent() {
+    if constexpr (requires { Solver::NUM_RUNTIME_PARAMETERS; }) {
+        return std::max<int>(CRACMM2_REACTION_COUNT, Solver::NUM_RUNTIME_PARAMETERS);
+    }
+    return CRACMM2_REACTION_COUNT;
+}
+
+TEST(E2ESolverValidation, Cracmm2DarkNoOzoneTitration) {
+    namespace mechanism = MECH_SOLVER_NAMESPACE;
+    using Solver = mechanism::SolverKernels<Kokkos::DefaultHostExecutionSpace>;
+    using HostVector = Kokkos::View<double*, Kokkos::HostSpace>;
+    HostVector state("cracmm2 state", Solver::NUM_SPECIES);
+    HostVector tendency("cracmm2 tendency", Solver::NUM_SPECIES);
+    HostVector forcing("cracmm2 dark, gas-only forcing", cracmm2_forcing_extent<Solver>());
+    Kokkos::deep_copy(state, 0.0);
+    Kokkos::deep_copy(forcing, 0.0);
+
+    // At t=0 only R036 is active. Photolysis, heterogeneous uptake and
+    // externally calculated custom rates are disabled for this isolated case.
+    constexpr double temperature = 298.15;  // K
+    constexpr double initial_no = 1.0e11;   // molecule cm-3
+    constexpr double initial_o3 = 2.0e11;   // molecule cm-3
+    state(mechanism::NO) = initial_no;
+    state(mechanism::O3) = initial_o3;
+
+    Solver solver;
+    solver.compute_rates(state, tendency, forcing, temperature);
+    const double rate = 3.0e-12 * std::exp(-1500.0 / temperature) * initial_no * initial_o3;
+    EXPECT_NEAR(tendency(mechanism::NO), -rate, rate * 1.0e-12);
+    EXPECT_NEAR(tendency(mechanism::O3), -rate, rate * 1.0e-12);
+    EXPECT_NEAR(tendency(mechanism::NO2), rate, rate * 1.0e-12);
+
+    solver.integrate(1.0, state, forcing, temperature);
+    EXPECT_GT(state(mechanism::NO), 0.0);
+    EXPECT_LT(state(mechanism::NO), initial_no);
+    EXPECT_GT(state(mechanism::O3), 0.0);
+    EXPECT_LT(state(mechanism::O3), initial_o3);
+    EXPECT_GT(state(mechanism::NO2), 0.0);
+    EXPECT_LT(state(mechanism::NO2), initial_no);
+}
+#else
 // ============================================================================
 // KPP-compatible SUN computation (replicates Update_SUN from saprc99_diurnal)
 // ============================================================================
@@ -196,6 +242,7 @@ TEST(E2ESolverValidation, MechanismIntegration) {
     }
     out.close();
 }
+#endif
 
 int main(int argc, char** argv) {
     // Exception-safe runtime ownership; also consumes --kokkos-* tuning args (FR-013).
